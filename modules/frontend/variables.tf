@@ -36,7 +36,8 @@ variable "private_subnet_ids" {
 
 variable "container_image" {
   type        = string
-  description = "Container image for the Next.js app (e.g., ECR repo URI:tag)."
+  description = "Container image for the Next.js app (e.g., ECR repo URI:tag). If empty and create_ecr is true, the module uses the created ECR repo with :latest."
+  default     = ""
 }
 
 variable "container_port" {
@@ -60,13 +61,13 @@ variable "memory" {
 variable "desired_count" {
   type        = number
   description = "Initial desired task count."
-  default     = 2
+  default     = 0
 }
 
 variable "autoscaling_min_capacity" {
   type        = number
   description = "Minimum number of tasks for autoscaling."
-  default     = 2
+  default     = 0
 }
 
 variable "autoscaling_max_capacity" {
@@ -102,6 +103,18 @@ variable "health_check_path" {
   type        = string
   description = "Health check path for the ALB target group."
   default     = "/"
+}
+
+variable "wait_for_steady_state" {
+  type        = bool
+  description = "Whether Terraform should wait for the ECS service to reach a steady state during apply. Set false to avoid apply hanging if image is not yet available."
+  default     = false
+}
+
+variable "enable_deployment_circuit_breaker" {
+  type        = bool
+  description = "Enable ECS deployment circuit breaker with automatic rollback to fail fast if tasks can't start (e.g., missing image)."
+  default     = true
 }
 
 variable "create_ecr" {

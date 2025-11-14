@@ -26,8 +26,8 @@ variable "secret_name" {
 }
 
 variable "secret_kv" {
-  type        = map(string)
-  description = "Optional key/value map to store in secret JSON."
+  type        = map(any)
+  description = "Optional key/value map to store in secret JSON. Allows strings, numbers, booleans."
   default     = null
 }
 
@@ -53,23 +53,17 @@ variable "clerk_secret_key" {
   sensitive   = true
 }
 
-variable "clerk_publishable_key" {
+variable "database_url" {
   type        = string
-  description = "Clerk publishable key."
+  description = "Database connection URL."
   default     = ""
   sensitive   = true
 }
 
-variable "supabase_db_url" {
+variable "direct_url" {
   type        = string
-  description = "Supabase database URL."
+  description = "Direct database connection URL."
   default     = ""
   sensitive   = true
 }
 
-variable "supabase_db_password" {
-  type        = string
-  description = "Supabase database password."
-  default     = ""
-  sensitive   = true
-}

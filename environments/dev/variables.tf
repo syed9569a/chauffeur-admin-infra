@@ -25,34 +25,21 @@ variable "tags" {
   }
 }
 
-variable "vpc_id" {
-  type        = string
-  description = "VPC ID for ECS services."
-}
-
-variable "public_subnet_ids" {
-  type        = list(string)
-  description = "Public subnets for frontend ALB."
-}
-
-variable "private_subnet_ids" {
-  type        = list(string)
-  description = "Private subnets for ECS tasks and internal backend ALB."
-}
-
 variable "frontend_image" {
   type        = string
-  description = "Frontend container image URI:tag."
+  description = "Optional: Frontend container image URI:tag. Leave empty to use the created ECR repo with :latest."
+  default     = ""
 }
 
 variable "backend_image" {
   type        = string
-  description = "Backend container image URI:tag."
+  description = "Optional: Backend container image URI:tag. Leave empty to use the created ECR repo with :latest."
+  default     = ""
 }
 
 variable "secret_kv" {
-  type        = map(string)
-  description = "Optional full map of secret data for Secrets Manager JSON."
-  default     = {}
+  type        = map(any)
+  description = "Optional full map of secret data for Secrets Manager JSON. If null, module will fall back to legacy keys."
+  default     = null
   sensitive   = true
 }

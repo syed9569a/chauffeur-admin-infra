@@ -5,7 +5,8 @@ locals {
     STRIPE_SECRET_KEY      = var.stripe_secret_key
     STRIPE_PUBLISHABLE_KEY = var.stripe_publishable_key
     CLERK_SECRET_KEY       = var.clerk_secret_key
-    CLERK_PUBLISHABLE_KEY  = var.clerk_publishable_key
+    DATABASE_URL           = var.database_url
+    DIRECT_URL             = var.direct_url
   }
 
   final_secret_map = var.secret_kv != null && length(var.secret_kv) > 0 ? var.secret_kv : local.legacy_secret_map

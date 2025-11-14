@@ -13,6 +13,10 @@ locals {
   plain_env_list = [for k, v in var.environment_vars : { name = k, value = v }]
 
   ecr_repo_name = coalesce(var.ecr_repository_name, lower(replace("${local.name_prefix}-repo", ":", "-")))
+  ecr_repo_url  = try(aws_ecr_repository.this[0].repository_url, null)
+  container_image_final = var.container_image != "" ? var.container_image : (
+    var.create_ecr && local.ecr_repo_url != null ? "${local.ecr_repo_url}:latest" : null
+  )
 }
 
 resource "aws_cloudwatch_log_group" "this" {
@@ -203,7 +207,7 @@ resource "aws_ecs_task_definition" "this" {
   container_definitions = jsonencode([
     {
       name      = local.container_name
-      image     = var.container_image
+  image     = local.container_image_final
       essential = true
       portMappings = [
         {
@@ -232,6 +236,12 @@ resource "aws_ecs_service" "this" {
   task_definition = aws_ecs_task_definition.this.arn
   desired_count   = var.desired_count
   launch_type     = "FARGATE"
+  wait_for_steady_state = var.wait_for_steady_state
+
+  deployment_circuit_breaker {
+    enable   = var.enable_deployment_circuit_breaker
+    rollback = var.enable_deployment_circuit_breaker
+  }
 
   network_configuration {
     subnets         = var.private_subnet_ids

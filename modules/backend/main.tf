@@ -1,18 +1,15 @@
 locals {
   name_prefix    = "${var.project_name}-${var.environment}-backend"
-  container_name = "nestjs"
-
-  secret_env_list = [
-    for k, v in var.secret_env_map : {
-      name      = k
-      valueFrom = "${var.secret_arn}:${v}::"
-    }
-  ]
-
-  plain_env_list = [for k, v in var.environment_vars : { name = k, value = v }]
+  container_name = "chauffeur-admin-api"
 
   bucket_final_name = coalesce(var.bucket_name, lower(replace("${var.project_name}-${var.environment}-uploads", ":", "-")))
   ecr_repo_name     = coalesce(var.ecr_repository_name, lower(replace("${local.name_prefix}-repo", ":", "-")))
+  ecr_repo_url      = try(aws_ecr_repository.this[0].repository_url, null)
+  container_image_final = var.container_image != "" ? var.container_image : (
+    var.create_ecr && local.ecr_repo_url != null ? "${local.ecr_repo_url}:latest" : null
+  )
+
+  use_https = var.certificate_arn != null && trim(var.certificate_arn) != ""
 }
 
 resource "aws_cloudwatch_log_group" "this" {
@@ -59,23 +56,6 @@ resource "aws_iam_role" "task" {
   name               = "${local.name_prefix}-task-role"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume.json
   tags               = var.tags
-}
-
-data "aws_iam_policy_document" "secrets_access" {
-  statement {
-    actions   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
-    resources = [var.secret_arn]
-  }
-}
-
-resource "aws_iam_policy" "secrets_access" {
-  name   = "${local.name_prefix}-secrets-access"
-  policy = data.aws_iam_policy_document.secrets_access.json
-}
-
-resource "aws_iam_role_policy_attachment" "task_secrets" {
-  role       = aws_iam_role.task.name
-  policy_arn = aws_iam_policy.secrets_access.arn
 }
 
 // S3 bucket for uploads
@@ -186,19 +166,24 @@ resource "aws_s3_bucket_policy" "uploads" {
 // Networking and ALB (internal)
 resource "aws_security_group" "alb" {
   name        = "${local.name_prefix}-alb-sg"
-  description = "Allow access only from allowed security groups"
+  description = "Public ALB access for backend API"
   vpc_id      = var.vpc_id
   tags        = var.tags
 
-  dynamic "ingress" {
-    for_each = toset(var.allowed_source_sg_ids)
-    content {
-      from_port       = var.container_port
-      to_port         = var.container_port
-      protocol        = "tcp"
-      security_groups = [ingress.value]
-      description     = "From allowed SG"
-    }
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "HTTPS inbound"
+  }
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "HTTP (redirect) inbound"
   }
 
   egress {
@@ -211,9 +196,9 @@ resource "aws_security_group" "alb" {
 
 resource "aws_lb" "this" {
   name               = "${replace(local.name_prefix, ":", "-")}-alb"
-  internal           = true
+  internal           = false
   load_balancer_type = "application"
-  subnets            = var.private_subnet_ids
+  subnets            = var.public_subnet_ids
   security_groups    = [aws_security_group.alb.id]
   tags               = var.tags
 }
@@ -235,9 +220,37 @@ resource "aws_lb_target_group" "this" {
   tags = var.tags
 }
 
-resource "aws_lb_listener" "http" {
+resource "aws_lb_listener" "https" {
+  count             = local.use_https ? 1 : 0
   load_balancer_arn = aws_lb.this.arn
-  port              = var.container_port
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = var.certificate_arn
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.this.arn
+  }
+}
+resource "aws_lb_listener" "http_redirect" {
+  count             = local.use_https && var.enable_http_redirect ? 1 : 0
+  load_balancer_arn = aws_lb.this.arn
+  port              = 80
+  protocol          = "HTTP"
+  default_action {
+    type = "redirect"
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+}
+
+resource "aws_lb_listener" "http_forward" {
+  count             = local.use_https ? 0 : 1
+  load_balancer_arn = aws_lb.this.arn
+  port              = 80
   protocol          = "HTTP"
   default_action {
     type             = "forward"
@@ -256,7 +269,7 @@ resource "aws_security_group" "service" {
     to_port         = var.container_port
     protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
-    description     = "From internal ALB"
+    description     = "From public ALB"
   }
 
   egress {
@@ -284,7 +297,7 @@ resource "aws_ecs_task_definition" "this" {
   container_definitions = jsonencode([
     {
       name      = local.container_name
-      image     = var.container_image
+      image     = local.container_image_final
       essential = true
       portMappings = [
         {
@@ -300,8 +313,6 @@ resource "aws_ecs_task_definition" "this" {
           awslogs-stream-prefix = "ecs"
         }
       }
-      environment = local.plain_env_list
-      secrets     = local.secret_env_list
     }
   ])
   tags = var.tags
@@ -313,6 +324,12 @@ resource "aws_ecs_service" "this" {
   task_definition = aws_ecs_task_definition.this.arn
   desired_count   = var.desired_count
   launch_type     = "FARGATE"
+  wait_for_steady_state = var.wait_for_steady_state
+
+  deployment_circuit_breaker {
+    enable   = var.enable_deployment_circuit_breaker
+    rollback = var.enable_deployment_circuit_breaker
+  }
 
   network_configuration {
     subnets         = var.private_subnet_ids
@@ -326,7 +343,7 @@ resource "aws_ecs_service" "this" {
     container_port   = var.container_port
   }
 
-  depends_on = [aws_lb_listener.http]
+  # Listener creation handled separately; no explicit depends_on needed.
   tags       = var.tags
 }
 

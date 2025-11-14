@@ -37,7 +37,8 @@ variable "allowed_source_sg_ids" {
 
 variable "container_image" {
   type        = string
-  description = "Container image for the NestJS app (e.g., ECR repo URI:tag)."
+  description = "Container image for the NestJS app (e.g., ECR repo URI:tag). If empty and create_ecr is true, the module uses the created ECR repo with :latest."
+  default     = ""
 }
 
 variable "container_port" {
@@ -61,13 +62,13 @@ variable "memory" {
 variable "desired_count" {
   type        = number
   description = "Initial desired task count."
-  default     = 2
+  default     = 0
 }
 
 variable "autoscaling_min_capacity" {
   type        = number
   description = "Minimum number of tasks for autoscaling."
-  default     = 2
+  default     = 0
 }
 
 variable "autoscaling_max_capacity" {
@@ -81,23 +82,22 @@ variable "autoscaling_target_cpu" {
   description = "Target average CPU utilization percentage for scaling."
   default     = 60
 }
-
-variable "secret_arn" {
+variable "public_subnet_ids" {
+  type        = list(string)
+  description = "Public subnet IDs where the public ALB will be deployed."
+}
+variable "certificate_arn" {
   type        = string
-  description = "ARN of the Secrets Manager secret containing environment variables as JSON."
+  description = "Optional ACM certificate ARN for HTTPS listener. When null, falls back to HTTP only."
+  default     = null
+}
+variable "enable_http_redirect" {
+  type        = bool
+  description = "If true and certificate_arn provided, create HTTP 80 listener redirecting to HTTPS 443."
+  default     = true
 }
 
-variable "secret_env_map" {
-  type        = map(string)
-  description = "Map of container env var name => JSON key in the secret."
-  default     = {}
-}
-
-variable "environment_vars" {
-  type        = map(string)
-  description = "Additional plaintext environment variables to inject."
-  default     = {}
-}
+// No secret_arn, secret_env_map or environment_vars are supported in this module.
 
 variable "health_check_path" {
   type        = string
@@ -127,4 +127,16 @@ variable "ecr_repository_name" {
   type        = string
   description = "Optional explicit name for the backend ECR repository."
   default     = null
+}
+
+variable "wait_for_steady_state" {
+  type        = bool
+  description = "Whether Terraform should wait for the ECS service to reach a steady state during apply. Set false to avoid apply hanging if image is not yet available."
+  default     = false
+}
+
+variable "enable_deployment_circuit_breaker" {
+  type        = bool
+  description = "Enable ECS deployment circuit breaker with automatic rollback to fail fast if tasks can't start (e.g., missing image)."
+  default     = true
 }
