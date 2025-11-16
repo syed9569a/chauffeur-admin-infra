@@ -17,7 +17,9 @@ module "backend" {
   private_subnet_ids = module.networking.private_subnet_ids
   public_subnet_ids  = module.networking.public_subnet_ids
   desired_count      = 0
-  # Backend runs without runtime secrets; no secret ARN or env mapping provided
+  
+  # Allow frontend task role to access S3 bucket
+  allow_frontend_task_role_arns = [module.frontend.task_role_arn]
 }
 
 module "frontend" {
@@ -33,15 +35,6 @@ module "frontend" {
 
   desired_count = 0
 
-  # Inject secrets from Secrets Manager into the container
-  secret_arn = module.secrets.secrets_arn
-  secret_env_map = {
-    STRIPE_SECRET_KEY      = "STRIPE_SECRET_KEY"
-    STRIPE_PUBLISHABLE_KEY = "STRIPE_PUBLISHABLE_KEY"
-    CLERK_SECRET_KEY       = "CLERK_SECRET_KEY"
-    CLERK_PUBLISHABLE_KEY  = "CLERK_PUBLISHABLE_KEY"
-  }
-
   # Optionally grant the frontend task role permission to write to backend's S3 bucket
-  # bucket_arn = module.backend.bucket_arn
+  bucket_arn = module.backend.bucket_arn
 }

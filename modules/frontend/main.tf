@@ -1,16 +1,7 @@
 locals {
   name_prefix = "${var.project_name}-${var.environment}-frontend"
 
-  container_name = "nextjs"
-
-  secret_env_list = [
-    for k, v in var.secret_env_map : {
-      name      = k
-      valueFrom = "${var.secret_arn}:${v}::"
-    }
-  ]
-
-  plain_env_list = [for k, v in var.environment_vars : { name = k, value = v }]
+  container_name = "chauffeur-frontend"
 
   ecr_repo_name = coalesce(var.ecr_repository_name, lower(replace("${local.name_prefix}-repo", ":", "-")))
   ecr_repo_url  = try(aws_ecr_repository.this[0].repository_url, null)
@@ -63,23 +54,6 @@ data "aws_iam_policy_document" "ecs_tasks_assume" {
       identifiers = ["ecs-tasks.amazonaws.com"]
     }
   }
-}
-
-data "aws_iam_policy_document" "secrets_access" {
-  statement {
-    actions   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
-    resources = [var.secret_arn]
-  }
-}
-
-resource "aws_iam_policy" "secrets_access" {
-  name   = "${local.name_prefix}-secrets-access"
-  policy = data.aws_iam_policy_document.secrets_access.json
-}
-
-resource "aws_iam_role_policy_attachment" "task_secrets" {
-  role       = aws_iam_role.task.name
-  policy_arn = aws_iam_policy.secrets_access.arn
 }
 
 // Optional S3 access for uploads (grants task role permissions)
@@ -223,8 +197,6 @@ resource "aws_ecs_task_definition" "this" {
           awslogs-stream-prefix = "ecs"
         }
       }
-      environment = local.plain_env_list
-      secrets     = local.secret_env_list
     }
   ])
   tags = var.tags

@@ -82,23 +82,6 @@ variable "autoscaling_target_cpu" {
   default     = 60
 }
 
-variable "secret_arn" {
-  type        = string
-  description = "ARN of the Secrets Manager secret containing environment variables as JSON."
-}
-
-variable "secret_env_map" {
-  type        = map(string)
-  description = "Map of container env var name => JSON key in the secret."
-  default     = {}
-}
-
-variable "environment_vars" {
-  type        = map(string)
-  description = "Additional plaintext environment variables to inject."
-  default     = {}
-}
-
 variable "health_check_path" {
   type        = string
   description = "Health check path for the ALB target group."
