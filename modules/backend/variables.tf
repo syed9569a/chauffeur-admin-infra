@@ -62,13 +62,13 @@ variable "memory" {
 variable "desired_count" {
   type        = number
   description = "Initial desired task count."
-  default     = 0
+  default     = 1
 }
 
 variable "autoscaling_min_capacity" {
   type        = number
   description = "Minimum number of tasks for autoscaling."
-  default     = 0
+  default     = 1
 }
 
 variable "autoscaling_max_capacity" {
@@ -102,7 +102,7 @@ variable "enable_http_redirect" {
 variable "health_check_path" {
   type        = string
   description = "Health check path for the internal ALB target group."
-  default     = "/health"
+  default     = "/api"
 }
 
 variable "bucket_name" {

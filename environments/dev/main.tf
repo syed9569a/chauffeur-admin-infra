@@ -16,7 +16,7 @@ module "backend" {
   vpc_id             = module.networking.vpc_id
   private_subnet_ids = module.networking.private_subnet_ids
   public_subnet_ids  = module.networking.public_subnet_ids
-  desired_count      = 0
+  desired_count      = 1
   
   # Allow frontend task role to access S3 bucket
   allow_frontend_task_role_arns = [module.frontend.task_role_arn]
