@@ -126,6 +126,7 @@ data "aws_iam_policy_document" "bucket_policy" {
       "s3:GetObject",
       "s3:PutObject",
       "s3:DeleteObject",
+      "s3:AbortMultipartUpload",
       "s3:ListBucket"
     ]
     resources = [
