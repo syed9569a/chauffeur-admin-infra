@@ -56,9 +56,8 @@ data "aws_iam_policy_document" "ecs_tasks_assume" {
   }
 }
 
-// Optional S3 access for uploads (grants task role permissions)
+// S3 access for uploads (grants task role permissions)
 data "aws_iam_policy_document" "s3_access" {
-  count = var.bucket_arn == null ? 0 : 1
   statement {
     actions = [
       "s3:PutObject",
@@ -75,15 +74,13 @@ data "aws_iam_policy_document" "s3_access" {
 }
 
 resource "aws_iam_policy" "s3_access" {
-  count  = var.bucket_arn == null ? 0 : 1
   name   = "${local.name_prefix}-s3-access"
-  policy = data.aws_iam_policy_document.s3_access[0].json
+  policy = data.aws_iam_policy_document.s3_access.json
 }
 
 resource "aws_iam_role_policy_attachment" "task_s3" {
-  count      = var.bucket_arn == null ? 0 : 1
   role       = aws_iam_role.task.name
-  policy_arn = aws_iam_policy.s3_access[0].arn
+  policy_arn = aws_iam_policy.s3_access.arn
 }
 
 resource "aws_ecs_cluster" "this" {
@@ -182,8 +179,9 @@ resource "aws_ecs_task_definition" "this" {
   container_definitions = jsonencode([
     {
       name      = local.container_name
-  image     = local.container_image_final
+      image     = local.container_image_final
       essential = true
+      environment = [for k, v in var.environment_variables : { name = k, value = v }]
       portMappings = [
         {
           containerPort = var.container_port
@@ -217,9 +215,9 @@ resource "aws_ecs_service" "this" {
   }
 
   network_configuration {
-    subnets         = var.private_subnet_ids
+    subnets         = var.public_subnet_ids
     security_groups = [aws_security_group.service.id]
-    assign_public_ip = false
+    assign_public_ip = true
   }
 
   load_balancer {

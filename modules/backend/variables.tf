@@ -24,10 +24,11 @@ variable "vpc_id" {
   description = "VPC ID where ECS and ALB will be deployed."
 }
 
-variable "private_subnet_ids" {
-  type        = list(string)
-  description = "Private subnet IDs for the internal ALB and ECS tasks."
+variable "vpc_cidr" {
+  type        = string
+  description = "VPC CIDR block for restricting ALB access to VPC only."
 }
+
 
 variable "allowed_source_sg_ids" {
   type        = list(string)
@@ -62,13 +63,13 @@ variable "memory" {
 variable "desired_count" {
   type        = number
   description = "Initial desired task count."
-  default     = 1
+  default     = 0
 }
 
 variable "autoscaling_min_capacity" {
   type        = number
   description = "Minimum number of tasks for autoscaling."
-  default     = 1
+  default     = 0
 }
 
 variable "autoscaling_max_capacity" {
@@ -105,16 +106,9 @@ variable "health_check_path" {
   default     = "/api"
 }
 
-variable "bucket_name" {
+variable "bucket_arn" {
   type        = string
-  description = "S3 bucket name for uploads. If not set, a name will be derived."
-  default     = null
-}
-
-variable "allow_frontend_task_role_arns" {
-  type        = list(string)
-  description = "Optional list of frontend task role ARNs that should have direct S3 access (if you don't use presigned URLs)."
-  default     = []
+  description = "ARN of the S3 uploads bucket for IAM policy configuration."
 }
 
 variable "create_ecr" {

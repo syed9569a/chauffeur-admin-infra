@@ -2,7 +2,6 @@ locals {
   name_prefix    = "${var.project_name}-${var.environment}-backend"
   container_name = "chauffeur-admin-api"
 
-  bucket_final_name = coalesce(var.bucket_name, lower(replace("${var.project_name}-${var.environment}-uploads", ":", "-")))
   ecr_repo_name     = coalesce(var.ecr_repository_name, lower(replace("${local.name_prefix}-repo", ":", "-")))
   ecr_repo_url      = try(aws_ecr_repository.this[0].repository_url, null)
   container_image_final = var.container_image != "" ? var.container_image : (
@@ -58,37 +57,7 @@ resource "aws_iam_role" "task" {
   tags               = var.tags
 }
 
-// S3 bucket for uploads
-resource "aws_s3_bucket" "uploads" {
-  bucket = local.bucket_final_name
-  tags   = var.tags
-}
-
-resource "aws_s3_bucket_public_access_block" "uploads" {
-  bucket                  = aws_s3_bucket.uploads.id
-  block_public_acls       = false
-  block_public_policy     = false
-  ignore_public_acls      = false
-  restrict_public_buckets = false
-}
-
-resource "aws_s3_bucket_server_side_encryption_configuration" "uploads" {
-  bucket = aws_s3_bucket.uploads.id
-  rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
-    }
-  }
-}
-
-resource "aws_s3_bucket_versioning" "uploads" {
-  bucket = aws_s3_bucket.uploads.id
-  versioning_configuration {
-    status = "Enabled"
-  }
-}
-
-// IAM policy for backend task role to access the bucket
+// IAM policy for backend task role to access the S3 bucket (bucket defined in separate s3 module)
 data "aws_iam_policy_document" "backend_s3_access" {
   statement {
     actions = [
@@ -97,12 +66,12 @@ data "aws_iam_policy_document" "backend_s3_access" {
       "s3:DeleteObject",
       "s3:AbortMultipartUpload"
     ]
-    resources = ["${aws_s3_bucket.uploads.arn}/*"]
+    resources = ["${var.bucket_arn}/*"]
   }
 
   statement {
     actions   = ["s3:ListBucket"]
-    resources = [aws_s3_bucket.uploads.arn]
+    resources = [var.bucket_arn]
   }
 }
 
@@ -116,81 +85,10 @@ resource "aws_iam_role_policy_attachment" "task_s3" {
   policy_arn = aws_iam_policy.backend_s3_access.arn
 }
 
-// S3 bucket policy: allow backend task role, optional frontend task roles, and public read/write for local testing
-data "aws_iam_policy_document" "bucket_policy" {
-  # Allow ECS task roles (backend + optional frontend)
-  statement {
-    sid     = "AllowBackendAndFrontendTaskRoles"
-    effect  = "Allow"
-    actions = [
-      "s3:GetObject",
-      "s3:PutObject",
-      "s3:DeleteObject",
-      "s3:AbortMultipartUpload",
-      "s3:ListBucket"
-    ]
-    resources = [
-      aws_s3_bucket.uploads.arn,
-      "${aws_s3_bucket.uploads.arn}/*"
-    ]
-
-    principals {
-      type        = "AWS"
-      identifiers = concat([aws_iam_role.task.arn], var.allow_frontend_task_role_arns)
-    }
-  }
-
-  # Allow public access for local testing
-  statement {
-    sid     = "AllowPublicAccessForTesting"
-    effect  = "Allow"
-    actions = [
-      "s3:GetObject",
-      "s3:PutObject"
-    ]
-    resources = [
-      "${aws_s3_bucket.uploads.arn}/*"
-    ]
-
-    principals {
-      type        = "*"
-      identifiers = ["*"]
-    }
-  }
-
-  # Still deny insecure transport
-  statement {
-    sid    = "DenyInsecureTransport"
-    effect = "Deny"
-    principals {
-      type        = "*"
-      identifiers = ["*"]
-    }
-    actions = ["s3:*"]
-    resources = [
-      aws_s3_bucket.uploads.arn,
-      "${aws_s3_bucket.uploads.arn}/*"
-    ]
-    condition {
-      test     = "Bool"
-      variable = "aws:SecureTransport"
-      values   = ["false"]
-    }
-  }
-}
-
-resource "aws_s3_bucket_policy" "uploads" {
-  bucket = aws_s3_bucket.uploads.id
-  policy = data.aws_iam_policy_document.bucket_policy.json
-  
-  # Ensure public access block is disabled before applying public policy
-  depends_on = [aws_s3_bucket_public_access_block.uploads]
-}
-
 // Networking and ALB (internal)
 resource "aws_security_group" "alb" {
   name        = "${local.name_prefix}-alb-sg"
-  description = "Public ALB access for backend API"
+  description = "Backend ALB - allow HTTP/HTTPS from internet"
   vpc_id      = var.vpc_id
   tags        = var.tags
 
@@ -199,7 +97,7 @@ resource "aws_security_group" "alb" {
     to_port     = 443
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
-    description = "HTTPS inbound"
+    description = "HTTPS from internet"
   }
 
   ingress {
@@ -207,7 +105,7 @@ resource "aws_security_group" "alb" {
     to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
-    description = "HTTP (redirect) inbound"
+    description = "HTTP from internet"
   }
 
   egress {
@@ -356,9 +254,9 @@ resource "aws_ecs_service" "this" {
   }
 
   network_configuration {
-    subnets         = var.private_subnet_ids
+    subnets         = var.public_subnet_ids
     security_groups = [aws_security_group.service.id]
-    assign_public_ip = false
+    assign_public_ip = true
   }
 
   load_balancer {

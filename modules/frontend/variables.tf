@@ -29,10 +29,7 @@ variable "public_subnet_ids" {
   description = "Public subnet IDs for the ALB."
 }
 
-variable "private_subnet_ids" {
-  type        = list(string)
-  description = "Private subnet IDs for ECS tasks."
-}
+ 
 
 variable "container_image" {
   type        = string
@@ -114,6 +111,11 @@ variable "ecr_repository_name" {
 
 variable "bucket_arn" {
   type        = string
-  description = "Optional S3 bucket ARN to grant the frontend task role access for uploads."
-  default     = null
+  description = "ARN of the S3 uploads bucket for IAM policy configuration."
+}
+
+variable "environment_variables" {
+  type        = map(string)
+  description = "Environment variables to inject into the container (e.g., NEXT_PUBLIC_API_BASE_URL)."
+  default     = {}
 }
